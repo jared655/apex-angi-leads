@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import Constants from "expo-constants";
 import { api } from "./api";
 
 export async function registerPushToken(): Promise<"native" | "web" | "unavailable"> {
@@ -36,7 +37,12 @@ export async function registerPushToken(): Promise<"native" | "web" | "unavailab
       });
     }
 
-    const token = (await Notifications.getExpoPushTokenAsync()).data;
+    const projectId =
+      Constants.easConfig?.projectId ??
+      (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId;
+    const token = (
+      await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined)
+    ).data;
     await api("/auth/push-token", {
       method: "POST",
       body: JSON.stringify({ token }),

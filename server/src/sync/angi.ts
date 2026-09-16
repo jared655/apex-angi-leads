@@ -4,9 +4,12 @@ import { getSetting, setSetting } from "../db.ts";
 import { emit } from "../bus.ts";
 import { notifyNewLead } from "../push.ts";
 import { normalizeLead, normalizeMany } from "./normalize.ts";
+import { angiPollingReady, getAngiConfig, publicAngiStatusExtras } from "./credentials.ts";
 import type { NormalizedLead } from "../types.ts";
 
 const OFFICE = "https://office.angi.com";
+const BROWSER_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
 export type SyncResult = {
   ok: boolean;
@@ -17,28 +20,72 @@ export type SyncResult = {
   message: string;
 };
 
-function configured(): boolean {
-  return Boolean(
-    process.env.ANGI_SESSION_COOKIE ||
-      (process.env.ANGI_EMAIL && process.env.ANGI_PASSWORD)
+function browserHeaders(cookie: string): Record<string, string> {
+  return {
+    cookie,
+    accept: "application/json, text/html;q=0.9, */*;q=0.8",
+    "accept-language": "en-US,en;q=0.9",
+    "user-agent": BROWSER_UA,
+    origin: OFFICE,
+    referer: `${OFFICE}/`,
+  };
+}
+
+function looksLikeLoginWall(text: string, status: number): boolean {
+  if (status === 401 || status === 403) return true;
+  const sample = text.slice(0, 4000).toLowerCase();
+  return (
+    sample.includes("id.angi.com") ||
+    sample.includes("performing security verification") ||
+    (sample.includes("sign in") && sample.includes("password") && sample.includes("forgot"))
   );
 }
 
-async function loginIfNeeded(cookieFromEnv: string | undefined): Promise<{ cookie: string; errors: string[] }> {
-  if (cookieFromEnv) {
-    return { cookie: cookieFromEnv, errors: [] };
+function harvestLeads(node: unknown, out: NormalizedLead[], depth = 0): void {
+  if (depth > 8 || node === null || node === undefined) return;
+  const normalized = normalizeLead(node, "angi-poll");
+  if (normalized) out.push(normalized);
+  if (Array.isArray(node)) {
+    for (const item of node) harvestLeads(item, out, depth + 1);
+    return;
   }
-  const email = process.env.ANGI_EMAIL;
-  const password = process.env.ANGI_PASSWORD;
+  if (typeof node === "object") {
+    for (const value of Object.values(node as Record<string, unknown>)) {
+      harvestLeads(value, out, depth + 1);
+    }
+  }
+}
+
+function uniqueLeads(leads: NormalizedLead[]): NormalizedLead[] {
+  const seen = new Set<string>();
+  const out: NormalizedLead[] = [];
+  for (const lead of leads) {
+    if (seen.has(lead.externalId)) continue;
+    seen.add(lead.externalId);
+    out.push(lead);
+  }
+  return out;
+}
+
+async function loginIfNeeded(cookieFromConfig: string, email: string, password: string): Promise<{ cookie: string; errors: string[] }> {
+  if (cookieFromConfig) {
+    return { cookie: cookieFromConfig, errors: [] };
+  }
   if (!email || !password) {
-    return { cookie: "", errors: ["ANGI_EMAIL and ANGI_PASSWORD are not set"] };
+    return { cookie: "", errors: ["No Angi session cookie. Email/password login is usually blocked by Cloudflare on id.angi.com — paste the Cookie header instead."] };
   }
 
   const errors: string[] = [];
   try {
     const loginUrl = process.env.ANGI_LOGIN_URL || `${OFFICE}/login`;
-    const page = await fetch(loginUrl, { redirect: "follow" });
+    const page = await fetch(loginUrl, { redirect: "follow", headers: browserHeaders("") });
     const html = await page.text();
+    if (looksLikeLoginWall(html, page.status)) {
+      errors.push(
+        "Angi login page is behind Cloudflare (id.angi.com). The server cannot complete that challenge. Paste ANGI_SESSION_COOKIE from a logged-in browser."
+      );
+      return { cookie: "", errors };
+    }
     const setCookies = page.headers.getSetCookie?.() ?? [];
     const $ = cheerio.load(html);
     const token =
@@ -55,17 +102,18 @@ async function loginIfNeeded(cookieFromEnv: string | undefined): Promise<{ cooki
     const res = await fetch(process.env.ANGI_LOGIN_POST_URL || loginUrl, {
       method: "POST",
       headers: {
+        ...browserHeaders(setCookies.map((c) => c.split(";")[0]).join("; ")),
         "content-type": "application/x-www-form-urlencoded",
-        cookie: setCookies.map((c) => c.split(";")[0]).join("; "),
-        origin: OFFICE,
-        referer: loginUrl,
       },
       body,
       redirect: "manual",
     });
     const nextCookies = res.headers.getSetCookie?.() ?? [];
     const cookie = [...setCookies, ...nextCookies].map((c) => c.split(";")[0]).join("; ");
-    if (!cookie) errors.push("Angi login returned no session cookie. Set ANGI_SESSION_COOKIE from a logged-in browser.");
+    if (!cookie || looksLikeLoginWall(await res.text().catch(() => ""), res.status)) {
+      errors.push("Angi login did not return a usable session. Paste the Cookie header from office.angi.com in Chrome DevTools.");
+      return { cookie: "", errors };
+    }
     return { cookie, errors };
   } catch (err) {
     errors.push(`Angi login failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -77,14 +125,18 @@ function parseLeadsFromHtml(html: string): NormalizedLead[] {
   const $ = cheerio.load(html);
   const found: NormalizedLead[] = [];
 
-  $("script[type='application/json'], script#__NEXT_DATA__, script[id*='data']").each((_, el) => {
+  $("script").each((_, el) => {
     const text = $(el).text();
-    if (!text.includes("lead") && !text.includes("Lead")) return;
-    try {
-      const json = JSON.parse(text);
-      found.push(...normalizeMany(json, "angi-html"));
-    } catch {
-      // ignore non-json
+    if (!text.includes("{")) return;
+    const candidates = [text];
+    const nextData = text.match(/\{[\s\S]*\}/);
+    if (nextData) candidates.push(nextData[0]);
+    for (const candidate of candidates) {
+      try {
+        harvestLeads(JSON.parse(candidate), found);
+      } catch {
+        // not json
+      }
     }
   });
 
@@ -116,13 +168,13 @@ function parseLeadsFromHtml(html: string): NormalizedLead[] {
     if (normalized) found.push(normalized);
   });
 
-  return found;
+  return uniqueLeads(found);
 }
 
-async function fetchJsonCandidates(cookie: string): Promise<{ leads: NormalizedLead[]; errors: string[] }> {
+async function fetchLeadSources(cookie: string, customUrls: string): Promise<{ leads: NormalizedLead[]; errors: string[] }> {
   const errors: string[] = [];
   const leads: NormalizedLead[] = [];
-  const endpoints = (process.env.ANGI_LEADS_API_URL || "")
+  const endpoints = customUrls
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean)
@@ -130,46 +182,68 @@ async function fetchJsonCandidates(cookie: string): Promise<{ leads: NormalizedL
       `${OFFICE}/api/leads`,
       `${OFFICE}/api/v1/leads`,
       `${OFFICE}/api/pro/leads`,
-      `${OFFICE}/leads?format=json`,
+      `${OFFICE}/leads`,
+      `${OFFICE}/leads/all`,
+      `${OFFICE}/app/leads`,
+      `${OFFICE}/`,
+      "https://pro.angi.com/leads",
+      "https://pro.angi.com/api/leads",
     ]);
 
   for (const url of endpoints) {
     try {
       const res = await fetch(url, {
-        headers: {
-          cookie,
-          accept: "application/json,text/html;q=0.9",
-          "user-agent": "APEX-Drafting-LeadSync/1.0",
-        },
+        headers: browserHeaders(cookie),
         redirect: "follow",
       });
       const contentType = res.headers.get("content-type") || "";
       const text = await res.text();
-      if (!res.ok) {
-        errors.push(`${url} -> HTTP ${res.status}`);
+      if (looksLikeLoginWall(text, res.status)) {
+        errors.push(`${url} → session expired or blocked (login/Cloudflare). Copy a fresh Cookie header.`);
         continue;
       }
-      if (contentType.includes("json")) {
-        const json = JSON.parse(text);
-        const batch = normalizeMany(json, "angi-api");
-        if (batch.length) {
-          leads.push(...batch);
-          break;
+      if (!res.ok) {
+        errors.push(`${url} → HTTP ${res.status}`);
+        continue;
+      }
+      if (contentType.includes("json") || text.trim().startsWith("{") || text.trim().startsWith("[")) {
+        try {
+          const batch: NormalizedLead[] = [];
+          harvestLeads(JSON.parse(text), batch);
+          if (batch.length) {
+            leads.push(...batch);
+            break;
+          }
+          errors.push(`${url} returned JSON but no recognizable leads (need id + name)`);
+        } catch {
+          errors.push(`${url} looked like JSON but failed to parse`);
         }
-        errors.push(`${url} returned JSON but no recognizable leads`);
       } else {
         const batch = parseLeadsFromHtml(text);
         if (batch.length) {
           leads.push(...batch);
           break;
         }
-        errors.push(`${url} returned HTML with no parseable leads (Angi UI likely changed or login required)`);
+        errors.push(`${url} HTML had no parseable leads`);
       }
     } catch (err) {
       errors.push(`${url} failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-  return { leads, errors };
+  return { leads: uniqueLeads(leads), errors };
+}
+
+function rememberSync(result: SyncResult): SyncResult {
+  setSetting("last_sync_at", new Date().toISOString());
+  setSetting("last_sync_mode", result.mode);
+  setSetting("last_sync_inserted", String(result.inserted));
+  setSetting("last_sync_error", result.ok ? "" : result.message);
+  if (result.errors.length) {
+    setSetting("last_sync_error_detail", result.errors.slice(0, 8).join(" | "));
+  } else {
+    setSetting("last_sync_error_detail", "");
+  }
+  return result;
 }
 
 export async function ingestLeads(
@@ -178,13 +252,11 @@ export async function ingestLeads(
 ): Promise<SyncResult> {
   let inserted = 0;
   let skipped = 0;
-  const createdIds: string[] = [];
 
   for (const lead of leads) {
     const result = insertNormalizedLead(lead);
     if (result.created) {
       inserted += 1;
-      createdIds.push(result.lead.id);
       void notifyNewLead(result.lead);
     } else {
       skipped += 1;
@@ -192,11 +264,7 @@ export async function ingestLeads(
   }
 
   emit({ type: "sync.completed", inserted, skipped });
-  setSetting("last_sync_at", new Date().toISOString());
-  setSetting("last_sync_mode", mode);
-  setSetting("last_sync_inserted", String(inserted));
-
-  return {
+  return rememberSync({
     ok: true,
     mode,
     inserted,
@@ -204,49 +272,50 @@ export async function ingestLeads(
     errors: [],
     message:
       inserted > 0
-        ? `Imported ${inserted} new lead${inserted === 1 ? "" : "s"} (${skipped} already stored).`
+        ? `Imported ${inserted} new lead${inserted === 1 ? "" : "s"} (${skipped} already stored). Both users are notified.`
         : skipped
-          ? `No new leads. ${skipped} already stored.`
+          ? `No new leads. ${skipped} already stored (deduped by Angi lead id).`
           : "No leads in this payload.",
-  };
+  });
 }
 
 export async function syncFromAngi(): Promise<SyncResult> {
-  if (!configured()) {
-    return {
+  const config = getAngiConfig();
+  if (!angiPollingReady(config)) {
+    return rememberSync({
       ok: false,
       mode: "disabled",
       inserted: 0,
       skipped: 0,
       errors: [],
       message:
-        "Angi polling is off. Set ANGI_SESSION_COOKIE or ANGI_EMAIL + ANGI_PASSWORD, or import JSON/CSV / use the webhook.",
-    };
+        "Angi is not attached. In Settings, paste your office.angi.com Cookie header (or ANGI_SESSION_COOKIE in server/.env), then tap Save & poll.",
+    });
   }
 
-  const { cookie, errors } = await loginIfNeeded(process.env.ANGI_SESSION_COOKIE);
-  if (!cookie) {
-    return {
+  const { cookie, errors } = await loginIfNeeded(config.cookie, config.email, config.password);
+  if (!cookie && !config.leadsApiUrl) {
+    return rememberSync({
       ok: false,
       mode: "poll",
       inserted: 0,
       skipped: 0,
       errors,
-      message: "Could not obtain an Angi session. Use CSV/JSON import or the CRM webhook.",
-    };
+      message: errors[0] || "Could not obtain an Angi session.",
+    });
   }
 
-  const fetched = await fetchJsonCandidates(cookie);
+  const fetched = await fetchLeadSources(cookie || config.cookie, config.leadsApiUrl);
   if (!fetched.leads.length) {
-    return {
+    return rememberSync({
       ok: false,
       mode: "poll",
       inserted: 0,
       skipped: 0,
       errors: [...errors, ...fetched.errors],
       message:
-        "Angi poll ran but found 0 leads. office.angi.com has no public API; HTML/XHR shapes change. Import a CSV/JSON export or point Angi CRM to POST /api/webhooks/angi.",
-    };
+        "Attached to Angi but found 0 leads. office.angi.com has no public API and the HTML/XHR shape may have changed. In Chrome DevTools → Network, copy the leads XHR URL into Leads API URL, or use the CRM webhook / CSV export.",
+    });
   }
 
   const result = await ingestLeads(fetched.leads, "poll");
@@ -254,39 +323,48 @@ export async function syncFromAngi(): Promise<SyncResult> {
   return result;
 }
 
-export function angiStatus(): {
-  pollingEnabled: boolean;
-  lastSyncAt: string | null;
-  lastSyncMode: string | null;
-  lastSyncInserted: string | null;
-  webhookEnabled: boolean;
-} {
+export function angiStatus() {
+  const extras = publicAngiStatusExtras();
   return {
-    pollingEnabled: configured(),
+    pollingEnabled: extras.hasCookie || extras.hasEmail || extras.hasCustomLeadsUrl,
     lastSyncAt: getSetting("last_sync_at"),
     lastSyncMode: getSetting("last_sync_mode"),
     lastSyncInserted: getSetting("last_sync_inserted"),
-    webhookEnabled: Boolean(process.env.ANGI_WEBHOOK_KEY),
+    lastError: getSetting("last_sync_error") || null,
+    lastErrorDetail: getSetting("last_sync_error_detail") || null,
+    pollIntervalMs: Number(process.env.ANGI_POLL_INTERVAL_MS || 60000),
+    webhookPath: "/api/webhooks/angi",
+    ...extras,
   };
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;
 
 export function startAngiPoller(): void {
-  const ms = Number(process.env.ANGI_POLL_INTERVAL_MS || 60000);
-  if (!configured()) {
-    console.log("Angi poller idle (no credentials). Import, simulate, or webhook will still work.");
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+  const ms = Math.max(Number(process.env.ANGI_POLL_INTERVAL_MS || 60000), 15000);
+  const config = getAngiConfig();
+  if (!angiPollingReady(config)) {
+    console.log("Angi poller idle — paste session cookie in Settings or server/.env to attach office.angi.com.");
     return;
   }
-  console.log(`Angi poller starting every ${ms}ms`);
-  void syncFromAngi();
+  console.log(`Angi poller attached; checking every ${ms}ms`);
+  void syncFromAngi().catch((err) => console.error("Angi poll error", err));
   timer = setInterval(() => {
     void syncFromAngi().catch((err) => console.error("Angi poll error", err));
-  }, Math.max(ms, 15000));
+  }, ms);
+}
+
+export function restartAngiPoller(): void {
+  startAngiPoller();
 }
 
 export function stopAngiPoller(): void {
   if (timer) clearInterval(timer);
+  timer = null;
 }
 
 const DEMO_LEADS: Array<Omit<NormalizedLead, "externalId"> & { externalId?: string }> = [

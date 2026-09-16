@@ -30,6 +30,8 @@
   },
   "scripts": {
     "start": "expo start --port 8082",
+    "lan": "expo start --lan --port 8082",
+    "go": "expo start --tunnel --port 8082",
     "android": "expo start --android --port 8082",
     "ios": "expo start --ios --port 8082",
     "web": "expo start --web --port 43122 --host localhost"

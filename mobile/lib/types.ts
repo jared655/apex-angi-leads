@@ -52,5 +52,21 @@ export type SyncStatus = {
   lastSyncAt: string | null;
   lastSyncMode: string | null;
   lastSyncInserted: string | null;
+  lastError: string | null;
+  lastErrorDetail: string | null;
+  pollIntervalMs: number;
+  webhookPath: string;
+  connected: boolean;
+  hasCookie: boolean;
+  hasEmail: boolean;
+  hasPassword: boolean;
+  hasCustomLeadsUrl: boolean;
   webhookEnabled: boolean;
+  envLocked: {
+    cookie: boolean;
+    email: boolean;
+    password: boolean;
+    leadsApiUrl: boolean;
+    webhookKey: boolean;
+  };
 };

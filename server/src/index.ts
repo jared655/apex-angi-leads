@@ -24,8 +24,10 @@ import {
   toPublicLead,
 } from "./leads.ts";
 import { notifyClaimed } from "./push.ts";
-import { angiStatus, buildDemoLead, ingestLeads, startAngiPoller, syncFromAngi } from "./sync/angi.ts";
+import { angiStatus, buildDemoLead, ingestLeads, restartAngiPoller, startAngiPoller, syncFromAngi } from "./sync/angi.ts";
+import { clearAngiSettings, getAngiConfig, saveAngiSettings } from "./sync/credentials.ts";
 import { normalizeMany, rowsFromCsv } from "./sync/normalize.ts";
+import { randomBytes } from "node:crypto";
 
 seedUsers();
 
@@ -259,10 +261,10 @@ app.post("/import/csv", async (c) => {
 });
 
 app.post("/webhooks/angi", async (c) => {
-  const expected = process.env.ANGI_WEBHOOK_KEY;
+  const expected = getAngiConfig().webhookKey;
   if (!expected) {
     return c.json(
-      { error: "Set ANGI_WEBHOOK_KEY to enable the Angi CRM webhook, or import CSV/JSON instead." },
+      { error: "Set ANGI_WEBHOOK_KEY in server/.env or save a webhook key in Settings to enable the Angi CRM webhook." },
       501
     );
   }
@@ -279,6 +281,43 @@ app.post("/sync/angi", async (c) => {
   if (!currentUser(c)) return c.json({ error: "Unauthorized" }, 401);
   const result = await syncFromAngi();
   return c.json(result, result.ok ? 200 : 422);
+});
+
+app.post("/sync/angi/connect", async (c) => {
+  if (!currentUser(c)) return c.json({ error: "Unauthorized" }, 401);
+  const body = await c.req.json().catch(() => ({}));
+  let webhookKey = body.webhookKey === undefined ? undefined : body.webhookKey;
+  if (webhookKey === "generate") webhookKey = randomBytes(24).toString("hex");
+  saveAngiSettings({
+    sessionCookie: body.sessionCookie,
+    email: body.email,
+    password: body.password,
+    leadsApiUrl: body.leadsApiUrl,
+    webhookKey,
+  });
+  restartAngiPoller();
+  const pollNow = body.pollNow !== false;
+  const sync = pollNow ? await syncFromAngi() : null;
+  return c.json({
+    ok: true,
+    message: pollNow
+      ? sync?.message
+      : "Angi credentials saved. Poller is running; tap Poll Angi now to verify.",
+    webhookKey: webhookKey === undefined ? undefined : getAngiConfig().webhookKey || null,
+    status: angiStatus(),
+    sync,
+  });
+});
+
+app.post("/sync/angi/disconnect", async (c) => {
+  if (!currentUser(c)) return c.json({ error: "Unauthorized" }, 401);
+  clearAngiSettings();
+  restartAngiPoller();
+  return c.json({
+    ok: true,
+    message: "Cleared Angi settings stored in the app. Values set in server/.env are unchanged.",
+    status: angiStatus(),
+  });
 });
 
 app.post("/sync/simulate", async (c) => {

@@ -1,0 +1,3 @@
+Unzip then open README.md — section "Windows PC + Expo Go (no WSL, no Origin CLI)".
+Copy server/.env.example to server/.env (ANGI_EMAIL is already apexdraftingllc@gmail.com).
+Set ANGI_PASSWORD there when you have it. Do not commit that password.

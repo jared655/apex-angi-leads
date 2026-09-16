@@ -80,13 +80,15 @@ Replace the hostname if your app name differs (`https://<app>.fly.dev`).
 
 ## 6. Point Expo at the public URL
 
-In `mobile/.env` (gitignored):
+In `mobile/.env` (gitignored) for **Expo Go / Metro**:
 
 ```
 EXPO_PUBLIC_API_URL=https://apex-angi-leads-api.fly.dev
 ```
 
 No trailing slash. Restart Metro (`npm run go` / `npm run lan`). Phones no longer need the PC or the same Wi‑Fi for the API.
+
+**EAS installable builds** bake the same URL in `mobile/eas.json` (`EXPO_PUBLIC_API_URL` on development / preview / production). After `eas build`, no Metro or Expo Go is required — see [mobile/INSTALL.md](mobile/INSTALL.md).
 
 Local Windows + Expo Go is unchanged: keep `EXPO_PUBLIC_API_URL=http://<LAN-IP>:43121` and `npm --prefix server run dev` when you are not using Fly.
 

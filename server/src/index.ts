@@ -328,7 +328,7 @@ const proxyEnabled = process.env.PROXY_EXPO_WEB !== "0";
 
 const listener = getRequestListener(app.fetch);
 const proxy = httpProxy.createProxyServer({
-  target: `http://127.0.0.1:${expoWebPort}`,
+  target: `http://localhost:${expoWebPort}`,
   ws: true,
   xfwd: true,
 });

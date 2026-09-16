@@ -1,0 +1,11 @@
+.git
+**/.env
+**/.env.*
+!**/.env.example
+node_modules
+data
+**/*.sqlite
+**/*.sqlite-*
+*.md
+npm-debug.*
+.DS_Store

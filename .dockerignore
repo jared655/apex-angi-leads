@@ -1,0 +1,19 @@
+# Build context is the repository root (`docker build -f server/Dockerfile .` / `fly deploy`).
+.git
+.github
+.cursor
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+node_modules
+mobile
+sample-data
+**/*.sqlite
+**/*.sqlite-*
+**/*.md
+**/data
+npm-debug.*
+.DS_Store
+.vscode
+.expo

@@ -35,7 +35,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(data.user);
       setTeammates(data.teammates);
       await setSession(token, JSON.stringify(data.user));
-      void registerPushToken();
+      void registerPushToken().catch((err) => {
+        console.warn("[apex] Push registration skipped", err);
+      });
     } catch {
       await clearSession();
       setUser(null);
@@ -66,7 +68,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     await setSession(data.token, JSON.stringify(data.user));
     setUser(data.user);
-    void registerPushToken();
+    void registerPushToken().catch((err) => {
+      console.warn("[apex] Push registration skipped", err);
+    });
     await refresh();
   }, [refresh]);
 

@@ -258,6 +258,9 @@ export default function SettingsScreen() {
         <Text style={styles.body}>
           Samsung: Play Store → Expo Go → Scan QR code, scan the same QR.
         </Text>
+        <Text style={styles.body}>
+          Expo Go on Android (SDK 53) cannot register remote push — that API was removed and would crash the app. New leads still land in Unclaimed with an in-app banner. Remote push is for a development or production build.
+        </Text>
         <Text style={styles.muted}>This device API: {apiBase || "/"} — phones must not use 127.0.0.1 unless the API runs on that phone.</Text>
       </View>
 

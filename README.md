@@ -11,7 +11,7 @@ This repo is one Expo app (`mobile/`) plus a Node/TypeScript API (`server/`) wit
 - Atomic claim (SQLite `BEGIN IMMEDIATE` — second claim returns 409)
 - Personal pipeline with full client fields and an activity log
 - Follow up, Sold, and Lost job actions
-- Push wiring via Expo Push (native). Web preview uses an in-app banner
+- Push wiring via Expo Push in development/production builds. Expo Go uses an in-app banner (Android Expo Go SDK 53 cannot register remote push)
 - Angi ingest: **attach Jared’s real office.angi.com session** (cookie / CRM webhook / CSV). Demo inject is only for testing.
 
 ## Windows PC + Expo Go (no WSL, no Origin CLI)
@@ -64,9 +64,9 @@ npm run go
 
 (`npm run go` = `expo start --tunnel --port 8082`. First run may ask for a free Expo login.)
 
-8. **iPhone:** App Store → Expo Go. Open **Camera**, scan the terminal QR, tap Open in Expo Go. Sign in as Jared (`jared@apexdrafting.local` / `ApexJared1!`). Allow notifications.
+8. **iPhone:** App Store → Expo Go. Open **Camera**, scan the terminal QR, tap Open in Expo Go. Sign in as Jared (`jared@apexdrafting.local` / `ApexJared1!`). New leads show in Unclaimed (and an in-app banner). Remote push needs a later development/production build.
 
-9. **Samsung:** Play Store → Expo Go → **Scan QR code**, same QR. Sign in as Reuben (`reuben@apexdrafting.local` / `ApexReuben1!`). Allow notifications.
+9. **Samsung:** Play Store → Expo Go → **Scan QR code**, same QR. Sign in as Reuben (`reuben@apexdrafting.local` / `ApexReuben1!`). Do **not** expect a notification permission prompt — Expo Go Android cannot register Expo Push (SDK 53). The app still runs.
 
 Web preview on the PC: in a third window `npm run dev` and open http://127.0.0.1:43121
 
@@ -162,7 +162,7 @@ office.angi.com → Leads → Export all → Settings import or `sample-data/`.
 | --- | --- |
 | Settings | Email `apexdraftingllc@gmail.com`; **waiting for password** until `ANGI_PASSWORD` or a Cookie is set |
 | After Cookie | Attached · cookie; real leads in Unclaimed |
-| Phones | Same inbox; Expo Go push on new ids |
+| Phones | Same inbox; in-app banner on new ids (Expo Go). Remote push only in a dev/production build |
 
 **Demo inject is not Angi.**
 
@@ -231,7 +231,7 @@ cd mobile && npm run go
 3. Tap the banner **Open in Expo Go**.
 4. Wait for `APEX Drafting` to bundle.
 5. Sign in as Jared (`jared@apexdrafting.local` / `ApexJared1!`) or Reuben.
-6. Allow notifications when asked.
+6. Sign in. If Expo Go asks for notifications on iOS you can allow them; Android Expo Go skips remote push on purpose (SDK 53).
 
 **Samsung**
 
@@ -239,13 +239,13 @@ cd mobile && npm run go
 2. Tap **Scan QR code**.
 3. Scan the **same** QR from the computer.
 4. Sign in as the other user on the second phone.
-5. Allow notifications.
+5. Sign in. Remote push is skipped in Expo Go on Android so the app does not crash.
 
 If the QR does nothing on iOS, in Expo Go tap “Enter URL manually” and paste the `exp://…` line from the terminal.
 
 ### 4. Confirm
 
-Settings → **Expo Go** / API line must show the LAN or tunnel URL, not `127.0.0.1`. Inject a demo lead (or a real Angi lead) — both phones should see it; native builds/Expo Go get a push.
+Settings → **Expo Go** / API line must show the LAN or tunnel URL, not `127.0.0.1`. Inject a demo lead (or a real Angi lead) — both phones should see it in Unclaimed with an in-app banner. Remote Expo Push is registered only in a development or production build, not Expo Go Android (SDK 53 removed it and throws if called).
 
 ## EAS / TestFlight / Play (can wait)
 

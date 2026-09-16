@@ -1,0 +1,14 @@
+{
+  "name": "apex-drafting",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n api,app -c blue,green \"npm run dev --prefix server\" \"npm run web --prefix mobile\"",
+    "dev:api": "npm run dev --prefix server",
+    "dev:app": "npm start --prefix mobile",
+    "start": "npm run dev",
+    "test": "npm test --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

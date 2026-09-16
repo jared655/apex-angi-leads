@@ -1,0 +1,16 @@
+[
+  {
+    "leadId": "ANGI-100184",
+    "firstName": "Sofia",
+    "lastName": "Ramirez",
+    "primaryPhone": "5125550188",
+    "email": "sofia.ramirez@example.com",
+    "address": "7601 S Congress Ave",
+    "city": "Austin",
+    "state": "TX",
+    "postalCode": "78745",
+    "taskName": "New home architectural drawings",
+    "comments": "Looking for a designer to produce a full permit set for a 3-bed new build on a sloped lot.",
+    "createDate": "2026-09-16T15:04:00Z"
+  }
+]

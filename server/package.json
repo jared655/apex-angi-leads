@@ -1,0 +1,32 @@
+{
+  "name": "apex-drafting-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "NODE_OPTIONS=--experimental-sqlite tsx watch src/index.ts",
+    "start": "NODE_OPTIONS=--experimental-sqlite tsx src/index.ts",
+    "seed": "NODE_OPTIONS=--experimental-sqlite tsx src/seed.ts",
+    "test": "NODE_OPTIONS=--experimental-sqlite DATABASE_PATH=:memory: tsx src/claim.test.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.6",
+    "bcryptjs": "^3.0.2",
+    "cheerio": "^1.1.2",
+    "csv-parse": "^6.1.0",
+    "dotenv": "^17.2.3",
+    "expo-server-sdk": "^4.0.0",
+    "hono": "^4.10.3",
+    "http-proxy": "^1.18.1",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/http-proxy": "^1.17.16",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.6.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

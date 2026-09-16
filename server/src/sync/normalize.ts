@@ -1,4 +1,19 @@
-import type { InterviewItem, NormalizedLead } from "./types.ts";
+import type { InterviewItem, NormalizedLead } from "../types.ts";
+
+const NESTED_LEAD_OBJECTS = ["consumerDetails", "leadDetails", "leadStatusDetails"] as const;
+
+/** Angi lead-summaries nest fields under consumer/lead/status objects. Hoist them so pick() can see leadId, names, phone, etc. */
+export function flattenAngiLeadRecord(record: Record<string, unknown>): Record<string, unknown> {
+  const flattened: Record<string, unknown> = {};
+  for (const key of NESTED_LEAD_OBJECTS) {
+    const nested = record[key];
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      Object.assign(flattened, nested as Record<string, unknown>);
+    }
+  }
+  Object.assign(flattened, record);
+  return flattened;
+}
 
 function asString(value: unknown): string | null {
   if (value === null || value === undefined) return null;
@@ -27,10 +42,12 @@ function fullName(record: Record<string, unknown>): string | null {
     "fullName",
     "contactName",
     "homeownerName",
+    "consumerName",
+    "consumerFullName",
   ]);
   if (combined) return combined;
-  const first = pick(record, ["firstName", "first_name", "firstname"]);
-  const last = pick(record, ["lastName", "last_name", "lastname"]);
+  const first = pick(record, ["firstName", "first_name", "firstname", "consumerFirstName", "consumer_first_name"]);
+  const last = pick(record, ["lastName", "last_name", "lastname", "consumerLastName", "consumer_last_name"]);
   const joined = [first, last].filter(Boolean).join(" ").trim();
   return joined || null;
 }
@@ -52,12 +69,12 @@ function interviewFrom(record: Record<string, unknown>): InterviewItem[] | null 
 }
 
 export function normalizeLead(input: unknown, fallbackSource = "angi"): NormalizedLead | null {
-  if (!input || typeof input !== "object") return null;
-  const record = input as Record<string, unknown>;
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const record = flattenAngiLeadRecord(input as Record<string, unknown>);
 
   const nested =
-    record.lead && typeof record.lead === "object"
-      ? (record.lead as Record<string, unknown>)
+    record.lead && typeof record.lead === "object" && !Array.isArray(record.lead)
+      ? flattenAngiLeadRecord(record.lead as Record<string, unknown>)
       : record;
 
   const externalId = pick(nested, [
@@ -76,7 +93,16 @@ export function normalizeLead(input: unknown, fallbackSource = "angi"): Normaliz
 
   const interview = interviewFrom(nested);
   const descriptionParts = [
-    pick(nested, ["description", "comments", "leadDescription", "message", "details", "jobDetails", "notes"]),
+    pick(nested, [
+      "description",
+      "comments",
+      "leadDescription",
+      "message",
+      "details",
+      "jobDetails",
+      "notes",
+      "taskDescription",
+    ]),
   ];
   if (interview?.length) {
     descriptionParts.push(
@@ -90,17 +116,33 @@ export function normalizeLead(input: unknown, fallbackSource = "angi"): Normaliz
       pick(nested, ["angiUrl", "angi_url", "url", "leadUrl", "link"]) ||
       `https://office.angi.com/leads/${encodeURIComponent(externalId)}`,
     customerName,
-    phone: pick(nested, ["phone", "primaryPhone", "phoneNumber", "mobile", "contactPhone"]),
-    email: pick(nested, ["email", "emailAddress", "contactEmail"]),
-    addressLine1: pick(nested, ["addressLine1", "address", "street", "streetAddress", "address1"]),
-    city: pick(nested, ["city"]),
-    state: pick(nested, ["state", "stateProvince", "region"]),
-    zip: pick(nested, ["zip", "postalCode", "zipCode", "zipcode"]),
+    phone: pick(nested, [
+      "phone",
+      "primaryPhone",
+      "phoneNumber",
+      "mobile",
+      "contactPhone",
+      "formattedConsumerPhone",
+      "consumerPhone",
+    ]),
+    email: pick(nested, ["email", "emailAddress", "contactEmail", "consumerEmail", "formattedConsumerEmail"]),
+    addressLine1: pick(nested, [
+      "addressLine1",
+      "address",
+      "street",
+      "streetAddress",
+      "address1",
+      "consumerAddressLine1",
+      "formattedAddress",
+    ]),
+    city: pick(nested, ["city", "consumerCity"]),
+    state: pick(nested, ["state", "stateProvince", "region", "consumerState"]),
+    zip: pick(nested, ["zip", "postalCode", "zipCode", "zipcode", "consumerZip", "consumerPostalCode"]),
     service: pick(nested, ["service", "taskName", "category", "jobType", "task", "project"]),
     description: descriptionParts.filter(Boolean).join("\n\n") || null,
     interview,
     source: pick(nested, ["source"]) || fallbackSource,
-    createdAt: pick(nested, ["createdAt", "createDate", "leadDate", "submittedAt", "date"]),
+    createdAt: pick(nested, ["createdAt", "createDate", "leadDate", "submittedAt", "date", "creationDatetime"]),
   };
 }
 
@@ -111,6 +153,7 @@ export function normalizeMany(input: unknown, fallbackSource = "angi"): Normaliz
   if (input && typeof input === "object") {
     const record = input as Record<string, unknown>;
     if (Array.isArray(record.leads)) return normalizeMany(record.leads, fallbackSource);
+    if (Array.isArray(record.leadSummaries)) return normalizeMany(record.leadSummaries, fallbackSource);
     const single = normalizeLead(input, fallbackSource);
     return single ? [single] : [];
   }

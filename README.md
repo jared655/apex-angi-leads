@@ -90,6 +90,10 @@ A sample unclaimed lead (Dana Holloway) is seeded on first boot. Settings → **
 
 API health: `GET http://127.0.0.1:43121/api/health`
 
+## Cloud API (phones without the PC)
+
+To keep the API always-on with a public HTTPS URL (Fly.io volume + SQLite), follow **[DEPLOY.md](DEPLOY.md)**. Then set `EXPO_PUBLIC_API_URL` in `mobile/.env` to `https://<app>.fly.dev`. Local Windows + Expo Go on the same Wi‑Fi is unchanged.
+
 ## Architecture
 
 ```
@@ -117,6 +121,8 @@ Copy `server/.env.example` → `server/.env`. Copy `mobile/.env.example` → `mo
 | `ANGI_EMAIL` | `server/.env` | Confirmed: `apexdraftingllc@gmail.com` |
 | `ANGI_PASSWORD` | `server/.env` | **Blank until supplied via secure env. Never commit.** |
 | `ANGI_LEADS_API_URL` | `server/.env` **or Settings** | DevTools XHR URL that returns leads JSON |
+| `ANGI_CALLER_TYPE` | `server/.env` | `X-ANGI-CallerType` (default `ServiceProvider`) |
+| `ANGI_CALLER_ID` | `server/.env` | `X-ANGI-CallerId` (or parsed from `/angiLeads/<id>/` / `/app/h/<id>/`) |
 | `ANGI_POLL_INTERVAL_MS` | `server/.env` | Default `60000` (minimum 15000) |
 | `ANGI_WEBHOOK_KEY` | `server/.env` **or Settings** | Shared secret for `POST /api/webhooks/angi` (`X-API-KEY`) |
 | `EXPO_PUBLIC_API_URL` | `mobile/.env` | API origin the **phones** call (never `127.0.0.1` on a device) |

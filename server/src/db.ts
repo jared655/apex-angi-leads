@@ -4,7 +4,9 @@ import { dirname, resolve } from "node:path";
 
 const dbPath = process.env.DATABASE_PATH || resolve(process.cwd(), "data", "apex.sqlite");
 
-mkdirSync(dirname(dbPath), { recursive: true });
+if (dbPath !== ":memory:") {
+  mkdirSync(dirname(dbPath), { recursive: true });
+}
 
 export const db = new DatabaseSync(dbPath);
 

@@ -363,7 +363,10 @@ app.get("/events", (c) => {
 const apiPort = Number(process.env.PORT || 43121);
 const expoWebPort = Number(process.env.EXPO_WEB_PORT || 43122);
 const listenHost = process.env.HOST || "0.0.0.0";
-const proxyEnabled = process.env.PROXY_EXPO_WEB !== "0";
+const proxyEnabled =
+  process.env.PROXY_EXPO_WEB !== undefined
+    ? process.env.PROXY_EXPO_WEB !== "0"
+    : process.env.NODE_ENV !== "production";
 
 const listener = getRequestListener(app.fetch);
 const proxy = httpProxy.createProxyServer({
@@ -409,6 +412,11 @@ server.on("upgrade", (req, socket, head) => {
 
 server.listen(apiPort, listenHost, () => {
   console.log(`APEX Drafting API on http://${listenHost}:${apiPort}`);
-  console.log(`Web preview (proxied Expo) http://127.0.0.1:${apiPort}`);
+  if (proxyEnabled) {
+    console.log(`Web preview (proxied Expo) http://127.0.0.1:${apiPort}`);
+  }
+  if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
+    console.warn("JWT_SECRET is unset; set it as a Fly/Railway secret before sharing this URL.");
+  }
   startAngiPoller();
 });

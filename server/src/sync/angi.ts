@@ -5,11 +5,10 @@ import { emit } from "../bus.ts";
 import { notifyNewLead } from "../push.ts";
 import { normalizeLead, normalizeMany } from "./normalize.ts";
 import { angiPollingReady, getAngiConfig, publicAngiStatusExtras } from "./credentials.ts";
+import { ANGI_OFFICE_ORIGIN, angiRequestHeaders, resolveAngiCallerId } from "./angiHeaders.ts";
 import type { NormalizedLead } from "../types.ts";
 
-const OFFICE = "https://office.angi.com";
-const BROWSER_UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+const OFFICE = ANGI_OFFICE_ORIGIN;
 
 export type SyncResult = {
   ok: boolean;
@@ -20,15 +19,8 @@ export type SyncResult = {
   message: string;
 };
 
-function browserHeaders(cookie: string): Record<string, string> {
-  return {
-    cookie,
-    accept: "application/json, text/html;q=0.9, */*;q=0.8",
-    "accept-language": "en-US,en;q=0.9",
-    "user-agent": BROWSER_UA,
-    origin: OFFICE,
-    referer: `${OFFICE}/`,
-  };
+function officeHeaders(cookie: string, url?: string, callerId?: string): Record<string, string> {
+  return angiRequestHeaders(cookie, { url, callerId });
 }
 
 function looksLikeLoginWall(text: string, status: number): boolean {
@@ -78,7 +70,7 @@ async function loginIfNeeded(cookieFromConfig: string, email: string, password: 
   const errors: string[] = [];
   try {
     const loginUrl = process.env.ANGI_LOGIN_URL || `${OFFICE}/login`;
-    const page = await fetch(loginUrl, { redirect: "follow", headers: browserHeaders("") });
+    const page = await fetch(loginUrl, { redirect: "follow", headers: officeHeaders("", loginUrl) });
     const html = await page.text();
     if (looksLikeLoginWall(html, page.status)) {
       errors.push(
@@ -102,7 +94,10 @@ async function loginIfNeeded(cookieFromConfig: string, email: string, password: 
     const res = await fetch(process.env.ANGI_LOGIN_POST_URL || loginUrl, {
       method: "POST",
       headers: {
-        ...browserHeaders(setCookies.map((c) => c.split(";")[0]).join("; ")),
+        ...officeHeaders(
+          setCookies.map((c) => c.split(";")[0]).join("; "),
+          process.env.ANGI_LOGIN_POST_URL || loginUrl
+        ),
         "content-type": "application/x-www-form-urlencoded",
       },
       body,
@@ -189,11 +184,12 @@ async function fetchLeadSources(cookie: string, customUrls: string): Promise<{ l
       "https://pro.angi.com/leads",
       "https://pro.angi.com/api/leads",
     ]);
+  const callerId = resolveAngiCallerId(endpoints);
 
   for (const url of endpoints) {
     try {
       const res = await fetch(url, {
-        headers: browserHeaders(cookie),
+        headers: officeHeaders(cookie, url, callerId),
         redirect: "follow",
       });
       const contentType = res.headers.get("content-type") || "";

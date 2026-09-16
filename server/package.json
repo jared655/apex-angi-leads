@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "NODE_OPTIONS=--experimental-sqlite tsx watch src/index.ts",
-    "start": "NODE_OPTIONS=--experimental-sqlite tsx src/index.ts",
-    "seed": "NODE_OPTIONS=--experimental-sqlite tsx src/seed.ts",
-    "test": "NODE_OPTIONS=--experimental-sqlite DATABASE_PATH=:memory: tsx src/claim.test.ts"
+    "dev": "cross-env NODE_OPTIONS=--experimental-sqlite tsx watch src/index.ts",
+    "start": "cross-env NODE_OPTIONS=--experimental-sqlite tsx src/index.ts",
+    "seed": "cross-env NODE_OPTIONS=--experimental-sqlite tsx src/seed.ts",
+    "test": "cross-env NODE_OPTIONS=--experimental-sqlite DATABASE_PATH=:memory: tsx src/claim.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.6",
@@ -26,6 +26,7 @@
     "@types/http-proxy": "^1.17.16",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.6.1",
+    "cross-env": "^10.1.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }

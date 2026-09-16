@@ -14,6 +14,62 @@ This repo is one Expo app (`mobile/`) plus a Node/TypeScript API (`server/`) wit
 - Push wiring via Expo Push (native). Web preview uses an in-app banner
 - Angi ingest: **attach Jared’s real office.angi.com session** (cookie / CRM webhook / CSV). Demo inject is only for testing.
 
+## Windows PC + Expo Go (no WSL, no Origin CLI)
+
+Use this if you cannot clone with Origin CLI. Unzip the project zip, then run in **PowerShell** (not WSL).
+
+1. Install **Node.js 22 LTS** from [https://nodejs.org](https://nodejs.org) (includes npm). Confirm: `node -v` and `npm -v`.
+2. Unzip `angi_flow_full_project.zip` to a folder such as `C:\Users\Jared\angi-flow`.
+3. Copy env files and set the Angi password (leave it blank until you have it):
+
+```powershell
+cd C:\Users\Jared\angi-flow
+Copy-Item server\.env.example server\.env
+Copy-Item mobile\.env.example mobile\.env
+notepad server\.env
+```
+
+`ANGI_EMAIL` is already `apexdraftingllc@gmail.com`. Set `ANGI_PASSWORD=` to the real Angi Pro password when you have it (this file is not committed). You can also paste an office.angi.com **Cookie** in the app Settings without a password.
+
+4. Install dependencies:
+
+```powershell
+npm install
+npm --prefix server install
+npm --prefix mobile install
+```
+
+5. Start the API (leave this window open):
+
+```powershell
+npm --prefix server run dev
+```
+
+Health check in a browser: http://127.0.0.1:43121/api/health
+
+6. Point phones at this PC. Same Wi-Fi: run `ipconfig`, copy the **IPv4 Address** for Wi-Fi (e.g. `192.168.1.20`). Edit `mobile\.env`:
+
+```
+EXPO_PUBLIC_API_URL=http://192.168.1.20:43121
+```
+
+Allow Node.js through Windows Firewall for private networks if the phones cannot connect.
+
+7. New PowerShell window — QR code for Expo Go:
+
+```powershell
+cd C:\Users\Jared\angi-flow\mobile
+npm run go
+```
+
+(`npm run go` = `expo start --tunnel --port 8082`. First run may ask for a free Expo login.)
+
+8. **iPhone:** App Store → Expo Go. Open **Camera**, scan the terminal QR, tap Open in Expo Go. Sign in as Jared (`jared@apexdrafting.local` / `ApexJared1!`). Allow notifications.
+
+9. **Samsung:** Play Store → Expo Go → **Scan QR code**, same QR. Sign in as Reuben (`reuben@apexdrafting.local` / `ApexReuben1!`). Allow notifications.
+
+Web preview on the PC: in a third window `npm run dev` and open http://127.0.0.1:43121
+
 ## Quick start (web preview)
 
 ```bash

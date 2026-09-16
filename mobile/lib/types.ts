@@ -60,6 +60,8 @@ export type SyncStatus = {
   hasCookie: boolean;
   hasEmail: boolean;
   hasPassword: boolean;
+  waitingForPassword: boolean;
+  angiEmail: string;
   hasCustomLeadsUrl: boolean;
   webhookEnabled: boolean;
   envLocked: {

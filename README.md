@@ -58,7 +58,8 @@ Copy `server/.env.example` → `server/.env`. Copy `mobile/.env.example` → `mo
 | `DATABASE_PATH` | `server/.env` | SQLite file (default `server/data/apex.sqlite`) |
 | `USER_JARED_*` / `USER_REUBEN_*` | `server/.env` | Seed emails, passwords, display names |
 | `ANGI_SESSION_COOKIE` | `server/.env` **or Settings** | Logged-in `office.angi.com` Cookie header |
-| `ANGI_EMAIL` / `ANGI_PASSWORD` | `server/.env` **or Settings** | Tried if no cookie; usually blocked by Cloudflare |
+| `ANGI_EMAIL` | `server/.env` | Confirmed: `apexdraftingllc@gmail.com` |
+| `ANGI_PASSWORD` | `server/.env` | **Blank until supplied via secure env. Never commit.** |
 | `ANGI_LEADS_API_URL` | `server/.env` **or Settings** | DevTools XHR URL that returns leads JSON |
 | `ANGI_POLL_INTERVAL_MS` | `server/.env` | Default `60000` (minimum 15000) |
 | `ANGI_WEBHOOK_KEY` | `server/.env` **or Settings** | Shared secret for `POST /api/webhooks/angi` (`X-API-KEY`) |
@@ -70,138 +71,129 @@ Passwords are re-hashed from env on each API boot so you can rotate them in `.en
 
 ## How Jared connects Angi Pro (live leads)
 
-Angi for Business (**office.angi.com**) has **no public leads API and no OAuth** we can implement. Login is fronted by Cloudflare (`id.angi.com`), so this server cannot complete a browser bot-check with email/password alone. The working attach path is a **session cookie** (or Angi CRM webhook).
+Confirmed Angi Pro login email: **apexdraftingllc@gmail.com**. The password is **not** in this repo. Put it in `server/.env` as `ANGI_PASSWORD` later via a secure env. Do not commit it.
 
-### Path A — session cookie + poller (fastest to live sync)
+`server/.env.example` already has:
 
-1. On a computer, open Chrome and sign in at [https://office.angi.com/login](https://office.angi.com/login). Open **Leads**.
-2. Press F12 → **Network**. Click any request to `office.angi.com`. Copy the full **Cookie** request header.
-3. Either:
-   - **In the app:** Settings → Connect Angi Pro → paste Cookie → **Save & poll Angi**, or
-   - **On the server:** put it in `server/.env` as `ANGI_SESSION_COOKIE=...` and restart `npm run dev:api`.
-4. Confirm: Unclaimed inbox shows real homeowners (not only “Inject demo lead”). Health: `GET /api/health` then Settings status **Attached · cookie**. Server log: `Angi poller attached`.
-5. If poll says **0 leads**, DevTools → Network → find the XHR whose JSON includes lead names/ids. Paste that URL as `ANGI_LEADS_API_URL` (or the Leads API URL field) and poll again.
-6. Cookies expire. When sync errors mention login/Cloudflare, paste a fresh Cookie. The poller runs every 60s and **dedupes by Angi lead id**. New ids notify **both** users (Expo push on phones, inbox banner on web).
+```
+ANGI_EMAIL=apexdraftingllc@gmail.com
+ANGI_PASSWORD=
+```
 
-Do **not** paste Angi passwords into git, chat, or this README.
+Copy that to `server/.env`. Until `ANGI_PASSWORD` is set, live sync uses a **session cookie** (Cloudflare blocks headless login on id.angi.com).
 
-### Path B — Angi CRM / Zapier webhook (most stable)
+### Path A — session cookie + poller (works today, no password required)
 
-1. Settings → **Generate webhook key** (or set `ANGI_WEBHOOK_KEY` in `server/.env`).
-2. Expose the API on HTTPS (see tunnel notes under Expo Go).
-3. Email `crmintegrations@angi.com` with company id, webhook URL `https://YOUR-API/api/webhooks/angi`, auth type **key**, header `X-API-KEY`, JSON body. Angi documents this in [CRM integration](https://intercom.help/angi/en/articles/10288125-setting-up-your-crm-integration-with-angi).
-4. Ask them to send a test lead. It should land in Unclaimed and push both phones.
+1. Chrome → sign in at [https://office.angi.com/login](https://office.angi.com/login) as `apexdraftingllc@gmail.com` → open **Leads**.
+2. F12 → **Network** → any `office.angi.com` request → copy the **Cookie** header.
+3. Settings → Connect Angi Pro → paste Cookie → **Save & poll Angi**, or set `ANGI_SESSION_COOKIE` in `server/.env` and restart the API.
+4. Unclaimed should list real homeowners. Duplicate Angi lead ids are skipped. New ids notify both users.
+5. If poll finds 0 leads, paste the leads XHR URL as `ANGI_LEADS_API_URL`.
 
-### Path C — CSV / JSON export (always works)
+When the password is supplied: add `ANGI_PASSWORD=...` only in `server/.env` (gitignored), restart `npm run dev:api`. Cookie remains the reliable poll path.
 
-office.angi.com → Leads → All leads → **Export all**. Import in Settings or `POST /api/import/csv`. Samples: `sample-data/`.
+### Path B — Angi CRM / Zapier webhook
 
-### Verify live sync
+Settings → **Generate webhook key**, then point Angi at `POST /api/webhooks/angi` with `X-API-KEY`. See [CRM integration](https://intercom.help/angi/en/articles/10288125-setting-up-your-crm-integration-with-angi).
+
+### Path C — CSV / JSON export
+
+office.angi.com → Leads → Export all → Settings import or `sample-data/`.
+
+### Verify
 
 | Check | Expected |
 | --- | --- |
-| Settings status | Attached · cookie (or webhook key) |
-| Save & poll / Poll now | New Angi ids appear once; repeats say “already stored” |
-| Second phone | Same unclaimed row; claim still atomic |
-| Push | Both Expo Go / EAS installs get “New Angi lead” |
+| Settings | Email `apexdraftingllc@gmail.com`; **waiting for password** until `ANGI_PASSWORD` or a Cookie is set |
+| After Cookie | Attached · cookie; real leads in Unclaimed |
+| Phones | Same inbox; Expo Go push on new ids |
 
-**Demo inject is not Angi.** Use it only to test claim/push without an Angi session.
+**Demo inject is not Angi.**
 
 ## Install on phones today (Expo Go)
 
-Fastest way onto a physical **iPhone and Samsung** without Apple/Google store review.
+This is the install path. No Apple Developer or Play Console needed.
 
-**Accounts you need today:** none for Apple/Play. Install [Expo Go for iOS](https://apps.apple.com/app/expo-go/id982107779) and [Expo Go for Android](https://play.google.com/store/apps/details?id=host.exp.exponent).
+**Project:** Expo app name `APEX Drafting`, slug `apex-drafting`, folder `mobile/`.
 
-Same Wi-Fi as the computer running the API:
+### 0. Apps on the phones
+
+- **iPhone:** App Store → [Expo Go](https://apps.apple.com/app/expo-go/id982107779) → Install.
+- **Samsung:** Play Store → [Expo Go](https://play.google.com/store/apps/details?id=host.exp.exponent) → Install.
+
+### 1. API the phones can reach
+
+Phones cannot use `http://127.0.0.1:43121` (that is the phone itself).
+
+Same Wi-Fi as the computer:
 
 ```bash
-# computer
 npm --prefix server run dev
+# Windows: ipconfig → IPv4   |  macOS/Linux: ipconfig getifaddr en0   or ip a
+```
 
-# find the computer’s LAN IP (Windows: ipconfig → IPv4)
-# mobile/.env
+Create `mobile/.env` from `mobile/.env.example`:
+
+```
 EXPO_PUBLIC_API_URL=http://192.168.x.x:43121
+```
 
+Use the computer’s LAN IP.
+
+### 2. Start Metro and show the QR
+
+```bash
 cd mobile
+npm install
 npm run lan
 ```
 
-Scan the QR code: iPhone uses the Camera app → Expo Go; Samsung uses the QR scanner in Expo Go.
+Leave this terminal open. It prints a **QR code** and a `exp://192.168.x.x:8082` URL.
 
-Different networks (or this cloud VM): tunnel the **API** as well as Metro. Phones cannot call `127.0.0.1` on the server.
+Different Wi-Fi / cloud VM: tunnel Metro **and** the API.
 
 ```bash
-# terminal 1 — API
+# terminal 1
 npm --prefix server run dev
 
-# terminal 2 — public HTTPS to the API (example)
+# terminal 2 — HTTPS to the API
 npx --yes cloudflared tunnel --url http://127.0.0.1:43121
-# copy the https://*.trycloudflare.com URL into mobile/.env:
-# EXPO_PUBLIC_API_URL=https://YOUR-TUNNEL.trycloudflare.com
+# put https://xxxxx.trycloudflare.com in mobile/.env as EXPO_PUBLIC_API_URL
 
-# terminal 3 — Expo Go tunnel
+# terminal 3 — QR that works off-LAN
 cd mobile && npm run go
 ```
 
-Sign in as Jared on one phone and Reuben on the other. Allow notifications. Settings → **This device** must show the tunnel/LAN API URL, not `http://127.0.0.1:43121`.
+`npm run go` is `expo start --tunnel --port 8082`. First time, Expo may ask you to log in to an Expo account (free).
 
-## Installable builds (EAS) — iPhone + Android
+### 3. Scan the same QR on both phones
 
-Use this when you want an icon on the home screen without Expo Go (TestFlight / Play internal / APK).
+**iPhone**
 
-**Accounts / paid programs**
+1. Open the **Camera** app (not Expo Go first).
+2. Point at the QR in the terminal.
+3. Tap the banner **Open in Expo Go**.
+4. Wait for `APEX Drafting` to bundle.
+5. Sign in as Jared (`jared@apexdrafting.local` / `ApexJared1!`) or Reuben.
+6. Allow notifications when asked.
 
-| Who | What | Why |
-| --- | --- | --- |
-| Expo | Free account (`eas login`) | Cloud builds |
-| Apple | [Apple Developer Program](https://developer.apple.com/programs/) (~$99/year) | Any iOS install besides Expo Go / simulator |
-| Google | [Play Console](https://play.google.com/console) (~$25 one-time) | Play internal testing. APK profile can sideload without Play |
+**Samsung**
 
-**One-time EAS setup** (from `mobile/`):
+1. Open the **Expo Go** app.
+2. Tap **Scan QR code**.
+3. Scan the **same** QR from the computer.
+4. Sign in as the other user on the second phone.
+5. Allow notifications.
 
-```bash
-npm i -g eas-cli
-cd mobile
-eas login
-eas init
-# This writes extra.eas.projectId into app.json — required for Expo push
-# on standalone builds. Commit that projectId. Do not invent one.
-```
+If the QR does nothing on iOS, in Expo Go tap “Enter URL manually” and paste the `exp://…` line from the terminal.
 
-Create the iOS app in [App Store Connect](https://appstoreconnect.apple.com) with bundle id `com.apexdrafting.leads`. Create the Android app in Play Console with package `com.apexdrafting.leads`.
+### 4. Confirm
 
-**iPhone (internal / TestFlight)**
+Settings → **Expo Go** / API line must show the LAN or tunnel URL, not `127.0.0.1`. Inject a demo lead (or a real Angi lead) — both phones should see it; native builds/Expo Go get a push.
 
-```bash
-cd mobile
-# Ad hoc / internal install via expo.dev (registers this iPhone’s UDID the first time)
-eas build --platform ios --profile preview
+## EAS / TestFlight / Play (can wait)
 
-# Store / TestFlight binary, then:
-eas submit --platform ios --profile production
-```
-
-After submit: App Store Connect → TestFlight → add Jared and Reuben as testers → they install **TestFlight** from the App Store, then APEX Drafting.
-
-**Samsung / Android**
-
-```bash
-cd mobile
-# Sideload APK (fastest Play-free install)
-eas build --platform android --profile preview
-# Install the APK from the Expo build page onto the Samsung (allow unknown sources).
-
-# Play internal testing track:
-eas build --platform android --profile production
-eas submit --platform android --profile production
-```
-
-Then Play Console → Testing → Internal testing → add Gmail testers → share the join link.
-
-**Push on EAS builds:** Expo dashboard → project → credentials → Android FCM v1 service account; iOS push key is created during the first `eas build` when you are logged into the Apple Developer team.
-
-Set `EXPO_PUBLIC_API_URL` to a **stable HTTPS API** before EAS build (baked in at build time), e.g. your VPS or Cloudflare tunnel hostname.
+Not needed to test on device. When you want a home-screen icon without Expo Go: Expo account + Apple Developer (~$99/year) + Play Console (~$25). Then from `mobile/`: `eas login`, `eas init`, `eas build --platform ios --profile preview`, `eas build --platform android --profile preview`. Full notes stay in git history / ask when you are ready to ship stores.
 
 ## API cheat sheet
 

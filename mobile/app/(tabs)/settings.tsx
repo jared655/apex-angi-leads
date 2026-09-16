@@ -14,7 +14,7 @@ export default function SettingsScreen() {
   const [saving, setSaving] = useState(false);
   const [json, setJson] = useState("");
   const [cookie, setCookie] = useState("");
-  const [angiEmail, setAngiEmail] = useState("");
+  const [angiEmail, setAngiEmail] = useState("apexdraftingllc@gmail.com");
   const [angiPassword, setAngiPassword] = useState("");
   const [leadsUrl, setLeadsUrl] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -30,6 +30,7 @@ export default function SettingsScreen() {
     try {
       const next = await api<SyncStatus>("/sync/status");
       setSync(next);
+      if (next.angiEmail) setAngiEmail(next.angiEmail);
     } catch {
       setSync(null);
     }
@@ -162,9 +163,12 @@ export default function SettingsScreen() {
       <View style={styles.card}>
         <Text style={styles.section}>Connect Angi Pro</Text>
         <Text style={styles.body}>
-          {attached
-            ? "Angi is attached. The server polls office.angi.com and both phones get a push when a new lead id appears."
-            : "Paste credentials from Jared’s real Angi for Business account. This app does not invent Angi OAuth — Angi has no public leads API."}
+          Angi login: <Text style={{ fontWeight: "700" }}>apexdraftingllc@gmail.com</Text>
+          {sync?.waitingForPassword
+            ? " — password is not in this repo. Add ANGI_PASSWORD in server/.env when you have it (secure env), or paste a session Cookie today to start live sync."
+            : attached
+              ? " Live sync is on. Both phones get a push when a new Angi lead id appears."
+              : " Paste a Cookie from office.angi.com to sync now without waiting on the password."}
         </Text>
         <Text style={styles.muted}>
           {attached ? "Attached" : "Not attached"}
@@ -196,23 +200,24 @@ export default function SettingsScreen() {
             placeholderTextColor={colors.muted}
           />
         )}
-        <Text style={[styles.section, { marginTop: 14 }]}>Angi email (optional, usually blocked by Cloudflare)</Text>
+        <Text style={[styles.section, { marginTop: 14 }]}>Angi email</Text>
         <TextInput
           value={angiEmail}
           onChangeText={setAngiEmail}
           autoCapitalize="none"
           keyboardType="email-address"
           style={styles.input}
-          placeholder="Same email as Angi Pro"
+          placeholder="apexdraftingllc@gmail.com"
           placeholderTextColor={colors.muted}
+          editable={!sync?.envLocked.email}
         />
-        <Text style={[styles.section, { marginTop: 10 }]}>Angi password</Text>
+        <Text style={[styles.section, { marginTop: 10 }]}>Angi password (optional — prefer server/.env)</Text>
         <TextInput
           value={angiPassword}
           onChangeText={setAngiPassword}
           secureTextEntry
           style={styles.input}
-          placeholder="Only stored on this server, never committed"
+          placeholder="Leave blank. Prefer ANGI_PASSWORD in server/.env (never commit it)."
           placeholderTextColor={colors.muted}
         />
         <Text style={[styles.section, { marginTop: 10 }]}>Leads API / XHR URL (optional)</Text>
@@ -243,13 +248,17 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.section}>This device</Text>
-        <Text style={styles.body}>API: {apiBase || "/"}</Text>
+        <Text style={styles.section}>Expo Go (iPhone + Samsung)</Text>
         <Text style={styles.body}>
-          {Platform.OS === "web"
-            ? "Web preview cannot receive APNs/FCM. Install Expo Go on the iPhone and Samsung, or an EAS preview build, so both users get a push on each new Angi lead."
-            : "This phone registers an Expo push token on login. New Angi leads notify Jared and Reuben."}
+          Project: APEX Drafting (slug apex-drafting). On the computer run the API, set EXPO_PUBLIC_API_URL in mobile/.env to that computer (LAN IP or HTTPS tunnel), then `cd mobile && npm run lan` (same Wi-Fi) or `npm run go` (tunnel).
         </Text>
+        <Text style={styles.body}>
+          iPhone: App Store → Expo Go. Open Camera, scan the terminal QR, tap Open in Expo Go.
+        </Text>
+        <Text style={styles.body}>
+          Samsung: Play Store → Expo Go → Scan QR code, scan the same QR.
+        </Text>
+        <Text style={styles.muted}>This device API: {apiBase || "/"} — phones must not use 127.0.0.1 unless the API runs on that phone.</Text>
       </View>
 
       <View style={styles.card}>

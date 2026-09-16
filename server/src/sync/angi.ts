@@ -326,7 +326,7 @@ export async function syncFromAngi(): Promise<SyncResult> {
 export function angiStatus() {
   const extras = publicAngiStatusExtras();
   return {
-    pollingEnabled: extras.hasCookie || extras.hasEmail || extras.hasCustomLeadsUrl,
+    pollingEnabled: angiPollingReady(),
     lastSyncAt: getSetting("last_sync_at"),
     lastSyncMode: getSetting("last_sync_mode"),
     lastSyncInserted: getSetting("last_sync_inserted"),

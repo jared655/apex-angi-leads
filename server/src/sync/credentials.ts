@@ -1,5 +1,8 @@
 import { deleteSetting, getSetting, setSetting } from "../db.ts";
 
+/** Confirmed Angi Pro login. Password is supplied later via secure env — never commit it. */
+export const DEFAULT_ANGI_EMAIL = "apexdraftingllc@gmail.com";
+
 export type AngiConfig = {
   cookie: string;
   email: string;
@@ -7,7 +10,7 @@ export type AngiConfig = {
   leadsApiUrl: string;
   webhookKey: string;
   cookieFrom: "env" | "settings" | null;
-  emailFrom: "env" | "settings" | null;
+  emailFrom: "env" | "settings" | "default" | null;
   passwordFrom: "env" | "settings" | null;
   leadsApiUrlFrom: "env" | "settings" | null;
   webhookKeyFrom: "env" | "settings" | null;
@@ -35,14 +38,15 @@ export function getAngiConfig(): AngiConfig {
   const password = pick("ANGI_PASSWORD", SETTING_KEYS.password);
   const leadsApiUrl = pick("ANGI_LEADS_API_URL", SETTING_KEYS.leadsApiUrl);
   const webhookKey = pick("ANGI_WEBHOOK_KEY", SETTING_KEYS.webhookKey);
+  const emailValue = email.value || DEFAULT_ANGI_EMAIL;
   return {
     cookie: cookie.value,
-    email: email.value,
+    email: emailValue,
     password: password.value,
     leadsApiUrl: leadsApiUrl.value,
     webhookKey: webhookKey.value,
     cookieFrom: cookie.from,
-    emailFrom: email.from,
+    emailFrom: email.from ?? "default",
     passwordFrom: password.from,
     leadsApiUrlFrom: leadsApiUrl.from,
     webhookKeyFrom: webhookKey.from,
@@ -84,11 +88,14 @@ export function clearAngiSettings(): void {
 
 export function publicAngiStatusExtras() {
   const config = getAngiConfig();
+  const waitingForPassword = Boolean(config.email) && !config.password && !config.cookie;
   return {
     connected: angiPollingReady(config) || Boolean(config.webhookKey),
     hasCookie: Boolean(config.cookie),
     hasEmail: Boolean(config.email),
     hasPassword: Boolean(config.password),
+    waitingForPassword,
+    angiEmail: config.email,
     hasCustomLeadsUrl: Boolean(config.leadsApiUrl),
     webhookEnabled: Boolean(config.webhookKey),
     envLocked: {

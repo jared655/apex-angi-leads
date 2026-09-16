@@ -94,6 +94,8 @@ API health: `GET http://127.0.0.1:43121/api/health`
 
 To keep the API always-on with a public HTTPS URL (Fly.io volume + SQLite), follow **[DEPLOY.md](DEPLOY.md)**. Then set `EXPO_PUBLIC_API_URL` in `mobile/.env` to `https://<app>.fly.dev`. Local Windows + Expo Go on the same Wi‑Fi is unchanged.
 
+Installable phone builds (home-screen icon, no Expo Go) bake that Fly URL in EAS — see **[mobile/INSTALL.md](mobile/INSTALL.md)**.
+
 ## Architecture
 
 ```
@@ -253,9 +255,9 @@ If the QR does nothing on iOS, in Expo Go tap “Enter URL manually” and paste
 
 Settings → **Expo Go** / API line must show the LAN or tunnel URL, not `127.0.0.1`. Inject a demo lead (or a real Angi lead) — both phones should see it in Unclaimed with an in-app banner. Remote Expo Push is registered only in a development or production build, not Expo Go Android (SDK 53 removed it and throws if called).
 
-## EAS / TestFlight / Play (can wait)
+## EAS installable builds (no Expo Go)
 
-Not needed to test on device. When you want a home-screen icon without Expo Go: Expo account + Apple Developer (~$99/year) + Play Console (~$25). Then from `mobile/`: `eas login`, `eas init`, `eas build --platform ios --profile preview`, `eas build --platform android --profile preview`. Full notes stay in git history / ask when you are ready to ship stores.
+Phones can install APEX Drafting without Expo Go or Metro. Preview Android is an APK; iOS needs Apple Developer + preview build or TestFlight. The Fly API URL is baked into every EAS profile. Step-by-step: **[mobile/INSTALL.md](mobile/INSTALL.md)**.
 
 ## API cheat sheet
 

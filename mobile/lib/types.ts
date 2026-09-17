@@ -41,6 +41,20 @@ export type Lead = {
   events: LeadEvent[];
 };
 
+export type IntakeTemplateId = "new_build" | "remodel" | "retroactive" | "addition";
+
+export type EmailResult = {
+  status: "sent" | "failed" | "skipped";
+  detail?: string;
+};
+
+export const INTAKE_TEMPLATE_CHOICES: { id: IntakeTemplateId; label: string }[] = [
+  { id: "new_build", label: "New Build" },
+  { id: "remodel", label: "Remodel" },
+  { id: "retroactive", label: "Retroactive" },
+  { id: "addition", label: "Addition" },
+];
+
 export type User = {
   id: string;
   email: string;

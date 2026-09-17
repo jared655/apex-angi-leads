@@ -131,6 +131,12 @@ function addEvent(leadId: string, type: string, userId: string | null, note: str
   ).run(randomUUID(), leadId, userId, type, note, nowIso());
 }
 
+export function addLeadEvent(leadId: string, type: string, userId: string | null, note: string | null): void {
+  addEvent(leadId, type, userId, note);
+  bumpSyncRevision();
+  emit({ type: "lead.updated", leadId });
+}
+
 export function insertNormalizedLead(input: NormalizedLead): { lead: LeadPublic; created: boolean } {
   const existing = getLeadByExternalId(input.externalId);
   if (existing) {

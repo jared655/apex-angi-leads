@@ -10,6 +10,7 @@ import { seedUsers, signToken, toPublicUser, updateDisplayName, savePushToken, v
 import { db, getSyncRevision } from "./db.ts";
 import { subscribe } from "./bus.ts";
 import {
+  addLeadEvent,
   addNote,
   claimLead,
   followUpLead,
@@ -23,6 +24,8 @@ import {
   markSold,
   toPublicLead,
 } from "./leads.ts";
+import { sendIntakeEmail } from "./gmail.ts";
+import { isIntakeTemplateId, type IntakeTemplateId } from "./intakeTemplates.ts";
 import { notifyClaimed } from "./push.ts";
 import { angiStatus, buildDemoLead, ingestLeads, restartAngiPoller, startAngiPoller, syncFromAngi } from "./sync/angi.ts";
 import { clearAngiSettings, getAngiConfig, saveAngiSettings } from "./sync/credentials.ts";
@@ -207,9 +210,37 @@ app.post("/leads/:id/sold", async (c) => {
   const user = currentUser(c);
   if (!user) return c.json({ error: "Unauthorized" }, 401);
   const body = await c.req.json().catch(() => ({}));
-  const result = markSold(c.req.param("id"), user.id, body.note);
+  const templateRaw = body.template;
+  let template: IntakeTemplateId | undefined;
+  if (templateRaw != null && String(templateRaw).trim() !== "") {
+    if (!isIntakeTemplateId(templateRaw)) {
+      return c.json({ error: "Unknown intake template. Use new_build, remodel, retroactive, or addition." }, 400);
+    }
+    template = templateRaw;
+  }
+  const leadId = c.req.param("id");
+
+  if (template) {
+    const existing = getLead(leadId);
+    if (!existing) return c.json({ error: "Lead not found" }, 404);
+    if (existing.claimed_by !== user.id) return c.json({ error: "This lead is not in your pipeline" }, 403);
+    if (!existing.email?.trim()) {
+      return c.json({ error: "Customer email is required to send the intake email" }, 400);
+    }
+  }
+
+  const result = markSold(leadId, user.id, body.note);
   if ("error" in result) return c.json({ error: result.error }, result.status);
-  return c.json({ lead: result });
+
+  if (!template) {
+    return c.json({ lead: result, email: { status: "skipped", detail: "Intake email skipped" } });
+  }
+
+  const email = await sendIntakeEmail({ lead: result, user, templateId: template });
+  const eventType = email.status === "sent" ? "email_sent" : email.status === "failed" ? "email_failed" : "email_skipped";
+  addLeadEvent(leadId, eventType, user.id, email.detail);
+  const latest = getLead(leadId);
+  return c.json({ lead: latest ? toPublicLead(latest, user.id) : result, email });
 });
 
 app.post("/leads/:id/lost", async (c) => {

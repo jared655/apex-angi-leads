@@ -3,6 +3,8 @@ import { useLocalSearchParams } from "expo-router";
 import * as Linking from "expo-linking";
 import {
   ActivityIndicator,
+  Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,7 +18,8 @@ import { useLeads } from "@/context/LeadsContext";
 import { ApiError } from "@/lib/api";
 import { formatWhen } from "@/lib/format";
 import { colors } from "@/lib/theme";
-import type { Lead } from "@/lib/types";
+import type { EmailResult, IntakeTemplateId, Lead } from "@/lib/types";
+import { INTAKE_TEMPLATE_CHOICES } from "@/lib/types";
 
 export default function LeadDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -27,6 +30,9 @@ export default function LeadDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [actionNote, setActionNote] = useState("");
+  const [soldPickerOpen, setSoldPickerOpen] = useState(false);
+  const [emailGate, setEmailGate] = useState(false);
+  const [emailBanner, setEmailBanner] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -57,6 +63,54 @@ export default function LeadDetailScreen() {
     }
   }
 
+  function describeEmail(email: EmailResult | undefined, template?: IntakeTemplateId): string {
+    if (!email) return "Lead marked sold.";
+    if (email.status === "sent") return email.detail || "Intake email sent.";
+    if (email.status === "failed") return `Lead marked sold. Intake email failed: ${email.detail || "send error"}`;
+    if (template) return email.detail || "Lead marked sold. Intake email was skipped.";
+    return "Lead marked sold. Intake email skipped.";
+  }
+
+  async function completeSold(template?: IntakeTemplateId) {
+    if (!lead) return;
+    setSoldPickerOpen(false);
+    setEmailGate(false);
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await sold(lead.id, actionNote || undefined, template);
+      setLead(result.lead);
+      setActionNote("");
+      const message = describeEmail(result.email, template);
+      setEmailBanner(message);
+      Alert.alert(result.lead.stage === "sold" ? "Sold" : "Updated", message);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : "Action failed";
+      setError(message);
+      if (id) {
+        try {
+          setLead(await loadLead(id));
+        } catch {
+          // keep current
+        }
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function pickSoldTemplate(template: IntakeTemplateId | "skip") {
+    if (template === "skip") {
+      void completeSold(undefined);
+      return;
+    }
+    if (!lead?.email?.trim()) {
+      setEmailGate(true);
+      return;
+    }
+    void completeSold(template);
+  }
+
   if (!lead) {
     return (
       <View style={styles.center}>
@@ -69,6 +123,7 @@ export default function LeadDetailScreen() {
   const location = lead.fullAddress || [lead.city, lead.state, lead.zip].filter(Boolean).join(", ");
 
   return (
+    <>
     <ScrollView style={styles.page} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <Text style={styles.kicker}>{lead.service || "Angi lead"}</Text>
@@ -111,6 +166,7 @@ export default function LeadDetailScreen() {
         </View>
       ) : null}
 
+      {emailBanner ? <Text style={styles.banner}>{emailBanner}</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {lead.stage === "unclaimed" ? (
@@ -132,7 +188,16 @@ export default function LeadDetailScreen() {
           />
           <Button label="Follow up" tone="warn" disabled={busy} onPress={() => run(() => followUp(lead.id, actionNote || undefined))} />
           <View style={styles.row}>
-            <Button label="Sold" tone="success" disabled={busy} onPress={() => run(() => sold(lead.id, actionNote || undefined))} style={{ flex: 1 }} />
+            <Button
+              label="Sold"
+              tone="success"
+              disabled={busy}
+              onPress={() => {
+                setEmailGate(false);
+                setSoldPickerOpen(true);
+              }}
+              style={{ flex: 1 }}
+            />
             <Button label="Lost job" tone="danger" disabled={busy} onPress={() => run(() => lost(lead.id, actionNote || undefined))} style={{ flex: 1 }} />
           </View>
         </View>
@@ -170,7 +235,7 @@ export default function LeadDetailScreen() {
         {lead.events.length === 0 ? <Text style={styles.body}>No activity yet.</Text> : null}
         {lead.events.map((event) => (
           <View key={event.id} style={styles.event}>
-            <Text style={styles.eventType}>{event.type.replace("_", " ")}</Text>
+            <Text style={styles.eventType}>{event.type.replaceAll("_", " ")}</Text>
             <Text style={styles.eventMeta}>
               {event.userName || "System"} · {formatWhen(event.createdAt)}
             </Text>
@@ -179,6 +244,82 @@ export default function LeadDetailScreen() {
         ))}
       </View>
     </ScrollView>
+    <Modal
+      visible={soldPickerOpen}
+      transparent
+      animationType="fade"
+      onRequestClose={() => {
+        setSoldPickerOpen(false);
+        setEmailGate(false);
+      }}
+    >
+      <View style={styles.sheetBackdrop}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => {
+            setSoldPickerOpen(false);
+            setEmailGate(false);
+          }}
+        />
+        <View style={styles.sheet}>
+          {emailGate ? (
+            <>
+              <Text style={styles.section}>Customer email required</Text>
+              <Text style={styles.sheetBody}>
+                This lead has no email on file. Add an email before sending, or skip the intake email to mark sold anyway.
+              </Text>
+              <Button
+                label="Skip email"
+                tone="ghost"
+                disabled={busy}
+                onPress={() => pickSoldTemplate("skip")}
+                style={{ marginBottom: 8 }}
+              />
+              <Button
+                label="Cancel"
+                tone="warn"
+                disabled={busy}
+                onPress={() => {
+                  setSoldPickerOpen(false);
+                  setEmailGate(false);
+                }}
+              />
+            </>
+          ) : (
+            <>
+              <Text style={styles.section}>Post-sale intake email</Text>
+              <Text style={styles.sheetBody}>Choose a template to send, or skip and still mark this lead sold.</Text>
+              {INTAKE_TEMPLATE_CHOICES.map((choice) => (
+                <Button
+                  key={choice.id}
+                  label={choice.label}
+                  disabled={busy}
+                  onPress={() => pickSoldTemplate(choice.id)}
+                  style={{ marginBottom: 8 }}
+                />
+              ))}
+              <Button
+                label="Skip email"
+                tone="ghost"
+                disabled={busy}
+                onPress={() => pickSoldTemplate("skip")}
+                style={{ marginBottom: 8 }}
+              />
+              <Button
+                label="Cancel"
+                tone="warn"
+                disabled={busy}
+                onPress={() => {
+                  setSoldPickerOpen(false);
+                  setEmailGate(false);
+                }}
+              />
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -230,6 +371,31 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
   error: { color: colors.danger, marginBottom: 10 },
+  banner: {
+    color: colors.navy,
+    backgroundColor: colors.infoBg,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+    lineHeight: 20,
+  },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(11, 28, 44, 0.45)",
+    justifyContent: "flex-end",
+    padding: 16,
+  },
+  sheet: {
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.line,
+    zIndex: 1,
+  },
+  sheetBody: { color: colors.ink, lineHeight: 20, marginBottom: 12, fontSize: 15 },
   lock: { color: colors.muted, marginBottom: 14, lineHeight: 20 },
   rowItem: { marginBottom: 10 },
   rowLabel: { fontSize: 11, color: colors.muted, letterSpacing: 0.6, textTransform: "uppercase", fontWeight: "700" },

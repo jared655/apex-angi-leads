@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AppState, Platform } from "react-native";
 import { api, getApiBase } from "@/lib/api";
 import { getToken } from "@/lib/storage";
-import type { Lead } from "@/lib/types";
+import type { EmailResult, IntakeTemplateId, Lead } from "@/lib/types";
 import { useAuth } from "./AuthContext";
 
 type LeadsState = {
@@ -17,7 +17,7 @@ type LeadsState = {
   refresh: () => Promise<void>;
   claim: (id: string) => Promise<Lead>;
   followUp: (id: string, note?: string) => Promise<Lead>;
-  sold: (id: string, note?: string) => Promise<Lead>;
+  sold: (id: string, note?: string, template?: IntakeTemplateId) => Promise<{ lead: Lead; email?: EmailResult }>;
   lost: (id: string, note?: string) => Promise<Lead>;
   addNote: (id: string, note: string) => Promise<Lead>;
   getLead: (id: string) => Lead | undefined;
@@ -154,13 +154,13 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
     return data.lead;
   }, [replaceLead]);
 
-  const sold = useCallback(async (id: string, note?: string) => {
-    const data = await api<{ lead: Lead }>(`/leads/${id}/sold`, {
+  const sold = useCallback(async (id: string, note?: string, template?: IntakeTemplateId) => {
+    const data = await api<{ lead: Lead; email?: EmailResult }>(`/leads/${id}/sold`, {
       method: "POST",
-      body: JSON.stringify({ note }),
+      body: JSON.stringify({ note, template }),
     });
     replaceLead(data.lead);
-    return data.lead;
+    return data;
   }, [replaceLead]);
 
   const lost = useCallback(async (id: string, note?: string) => {

@@ -1,5 +1,5 @@
 import { seedUsers } from "./auth.ts";
-import { sendIntakeEmail } from "./gmail.ts";
+import { mailboxForUser, sendIntakeEmail } from "./gmail.ts";
 import {
   composeProjectAddress,
   customerFirstName,
@@ -153,5 +153,42 @@ const failed = await sendIntakeEmail({
 });
 assert(failed.status === "failed", "send errors become email failed, not thrown");
 assert(failed.detail.includes("SMTP 535"), "failure detail includes transport error");
+
+const reubenBox = mailboxForUser({ id: "user_reuben", displayName: "Reuben" });
+assert(reubenBox?.from === "reuben@apexdraftingservices.com", "Reuben from-address stays mapped for later");
+assert(reubenBox?.sendEnabled === false, "Reuben send is stubbed");
+assert(reubenBox?.appPassword === undefined, "Reuben mailbox never reads an app password");
+
+process.env.GMAIL_REUBEN_APP_PASSWORD = "should-not-be-used";
+let reubenSendCalled = false;
+const { lead: reubenLead } = insertNormalizedLead({
+  externalId: `sold-reuben-stub-${Date.now()}`,
+  customerName: "Riley Homeowner",
+  email: "riley@example.com",
+  city: "Austin",
+  state: "TX",
+  service: "Addition",
+  source: "test",
+  createdAt: new Date().toISOString(),
+});
+assert(claimLead(reubenLead.id, "user_reuben").ok, "Reuben can claim");
+const reubenSold = markSold(reubenLead.id, "user_reuben");
+assert(!("error" in reubenSold) && (reubenSold as LeadPublic).stage === "sold", "Reuben sold succeeds");
+const reubenEmail = await sendIntakeEmail({
+  lead: reubenSold as LeadPublic,
+  user: { id: "user_reuben", displayName: "Reuben" },
+  templateId: "new_build",
+  send: async () => {
+    reubenSendCalled = true;
+    throw new Error("Reuben SMTP should not run");
+  },
+});
+assert(reubenEmail.status === "skipped", `Reuben template choice should skip, got ${reubenEmail.status}`);
+assert(
+  reubenEmail.detail === "Reuben Gmail not configured yet",
+  `expected stub skip detail, got: ${reubenEmail.detail}`
+);
+assert(!reubenSendCalled, "Reuben path must not call the mail transport");
+assert((reubenSold as LeadPublic).stage === "sold", "Reuben lead stays sold after stub skip");
 
 console.log("OK: intake template fill + sold without Gmail password still succeeds");

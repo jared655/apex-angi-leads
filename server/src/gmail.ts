@@ -20,6 +20,8 @@ export type SalesMailbox = {
   appPassword: string | undefined;
   phone: string;
   displayName: string;
+  /** Only Jared's Gmail sends today. Reuben's mailbox is mapped for later. */
+  sendEnabled: boolean;
 };
 
 export type SendMailFn = (opts: {
@@ -46,15 +48,18 @@ export function mailboxForUser(user: { id: string; displayName: string }): Sales
       appPassword: cleanSecret(process.env.GMAIL_JARED_APP_PASSWORD),
       phone: process.env.SALES_PHONE_JARED ?? "435-990-3556",
       displayName: user.displayName,
+      sendEnabled: true,
     };
   }
   if (user.id === "user_reuben") {
     return {
       userId: user.id,
       from: process.env.GMAIL_REUBEN_USER?.trim() || "reuben@apexdraftingservices.com",
-      appPassword: cleanSecret(process.env.GMAIL_REUBEN_APP_PASSWORD),
+      // Reuben send is stubbed; do not read GMAIL_REUBEN_APP_PASSWORD.
+      appPassword: undefined,
       phone: process.env.SALES_PHONE_REUBEN ?? "213-414-7319",
       displayName: user.displayName,
+      sendEnabled: false,
     };
   }
   return null;
@@ -105,11 +110,14 @@ export async function sendIntakeEmail(opts: {
     return { status: "skipped", detail: `No Gmail mailbox mapped for ${opts.user.id}` };
   }
 
+  if (!mailbox.sendEnabled) {
+    return { status: "skipped", detail: "Reuben Gmail not configured yet" };
+  }
+
   if (!mailbox.appPassword) {
-    const envName = opts.user.id === "user_reuben" ? "GMAIL_REUBEN_APP_PASSWORD" : "GMAIL_JARED_APP_PASSWORD";
     return {
       status: "skipped",
-      detail: `Gmail app password is not configured (${envName}); intake email not sent`,
+      detail: "Gmail app password is not configured (GMAIL_JARED_APP_PASSWORD); intake email not sent",
     };
   }
 
